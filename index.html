@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Duum.io — DuumGPT Portal (MVP)</title>
+  <meta name="theme-color" content="#111111" />
+  <link rel="manifest" href="manifest.json" />
+  <style>
+    :root { color-scheme: dark; }
+    body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; background:#0b0b0b; color:#eaeaea; }
+    header { padding: 18px 16px; border-bottom: 1px solid #1f1f1f; background:#0f0f0f; position: sticky; top:0; }
+    header h1 { margin:0; font-size: 16px; letter-spacing: .4px; }
+    header p { margin:6px 0 0; font-size: 12px; color:#bdbdbd; }
+    main { padding: 16px; max-width: 980px; margin: 0 auto; }
+    .card { background:#111; border:1px solid #1f1f1f; border-radius: 14px; padding: 14px; margin-bottom: 12px; }
+    .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+    label { font-size: 12px; color:#cfcfcf; }
+    input[type="text"], select { background:#0c0c0c; border:1px solid #2a2a2a; color:#eaeaea; padding: 10px 10px; border-radius: 10px; min-width: 240px; }
+    input[type="file"] { width: 100%; }
+    button { background:#eaeaea; color:#0b0b0b; border: 0; border-radius: 12px; padding: 10px 14px; font-weight: 700; cursor: pointer; }
+    button.secondary { background:#1b1b1b; color:#eaeaea; border:1px solid #2a2a2a; }
+    button:disabled { opacity:.5; cursor:not-allowed; }
+    .hint { font-size: 12px; color:#bdbdbd; margin-top: 8px; line-height: 1.4; }
+    .small { font-size: 11px; color:#9f9f9f; }
+    .status { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; white-space: pre-wrap; background:#0c0c0c; border:1px solid #222; border-radius: 12px; padding: 12px; }
+    .grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+    .pill { display:inline-block; padding: 3px 8px; border:1px solid #2a2a2a; border-radius: 999px; font-size: 11px; color:#dcdcdc; background:#0c0c0c; }
+    .ok { color:#7CFF9E; }
+    .bad { color:#ff7c7c; }
+    .muted { color:#bdbdbd; }
+    .preview img { width: 100%; border-radius: 10px; border: 1px solid #242424; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .footer { padding: 24px 16px 60px; color:#8f8f8f; font-size: 12px; text-align:center; }
+    a { color:#eaeaea; }
+  </style>
+</head>
+<body>
+<header>
+  <h1>Duum.io — DuumGPT Portal (MVP)</h1>
+  <p>Upload 1–N screenshots/photos. Get a structured verdict. Build the future later.</p>
+</header>
+
+<main>
+  <div class="card">
+    <div class="row">
+      <div>
+        <label for="apiBase">API base URL</label><br />
+        <input id="apiBase" type="text" placeholder="http://localhost:1337" />
+        <div class="hint">Local dev: <span class="mono">http://localhost:1337</span>. Later: <span class="mono">https://api.duum.io</span>.</div>
+      </div>
+      <div>
+        <label for="mode">Mode</label><br />
+        <select id="mode">
+          <option value="beginner">Beginner (help me decide)</option>
+          <option value="no_fluff" selected>No fluff</option>
+          <option value="deep_dive">Deep dive</option>
+        </select>
+        <div class="hint">Same engine; different verbosity.</div>
+      </div>
+      <div>
+        <label for="route">Route</label><br />
+        <select id="route">
+          <option value="/api/ingest/items" selected>/api/ingest/items (multi-image)</option>
+          <option value="/api/duumgpt/ingest">/api/duumgpt/ingest</option>
+        </select>
+        <div class="hint">We’ll implement the chosen route in DuumGPT.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <label>Images (1–N)</label>
+    <input id="files" type="file" accept="image/*" multiple />
+    <div class="hint">
+      On mobile, you can pick from your gallery or camera. (Some browsers show camera directly; others show “Take Photo” inside the picker.)
+    </div>
+
+    <div class="row" style="margin-top:12px;">
+      <button id="analyzeBtn">Analyze</button>
+      <button id="clearBtn" class="secondary">Clear</button>
+      <span class="pill" id="countPill">0 images</span>
+      <span class="pill" id="connPill">API: <span class="muted">not checked</span></span>
+    </div>
+    <div class="hint small">
+      Tip: For best iOS behavior, install as a Home Screen app (PWA).
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="row" style="justify-content:space-between;">
+      <strong>Preview</strong>
+      <span class="small">Nothing uploads until you press Analyze.</span>
+    </div>
+    <div id="preview" class="grid preview" style="margin-top:10px;"></div>
+  </div>
+
+  <div class="card">
+    <div class="row" style="justify-content:space-between;">
+      <strong>Result</strong>
+      <span class="small">Structured JSON for the engine + UI.</span>
+    </div>
+    <div id="status" class="status" style="margin-top:10px;">Ready.</div>
+  </div>
+
+  <div class="footer">
+    <div class="mono">DuumGPT Portal • MVP shell</div>
+    <div>Build first. Polish later. Add profit in the fourth act.</div>
+  </div>
+</main>
+
+<script>
+(function () {
+  const apiBaseEl = document.getElementById('apiBase');
+  const modeEl = document.getElementById('mode');
+  const routeEl = document.getElementById('route');
+  const filesEl = document.getElementById('files');
+  const analyzeBtn = document.getElementById('analyzeBtn');
+  const clearBtn = document.getElementById('clearBtn');
+  const statusEl = document.getElementById('status');
+  const previewEl = document.getElementById('preview');
+  const countPill = document.getElementById('countPill');
+  const connPill = document.getElementById('connPill');
+
+  apiBaseEl.value = localStorage.getItem('duum_api_base') || 'http://localhost:1337';
+  modeEl.value = localStorage.getItem('duum_mode') || 'no_fluff';
+  routeEl.value = localStorage.getItem('duum_route') || '/api/ingest/items';
+
+  function saveSettings() {
+    localStorage.setItem('duum_api_base', apiBaseEl.value.trim());
+    localStorage.setItem('duum_mode', modeEl.value);
+    localStorage.setItem('duum_route', routeEl.value);
+  }
+  apiBaseEl.addEventListener('change', saveSettings);
+  modeEl.addEventListener('change', saveSettings);
+  routeEl.addEventListener('change', saveSettings);
+
+  function setStatus(v) {
+    if (typeof v === 'string') statusEl.textContent = v;
+    else statusEl.textContent = JSON.stringify(v, null, 2);
+  }
+
+  function updateCount() {
+    const n = filesEl.files ? filesEl.files.length : 0;
+    countPill.textContent = n + (n === 1 ? ' image' : ' images');
+  }
+
+  function renderPreview() {
+    previewEl.innerHTML = '';
+    const files = Array.from(filesEl.files || []);
+    files.slice(0, 12).forEach((f) => {
+      const url = URL.createObjectURL(f);
+      const div = document.createElement('div');
+      const img = document.createElement('img');
+      img.src = url;
+      img.alt = f.name;
+      div.appendChild(img);
+      previewEl.appendChild(div);
+    });
+    if (files.length > 12) {
+      const more = document.createElement('div');
+      more.className = 'status';
+      more.textContent = '+' + (files.length - 12) + ' more…';
+      previewEl.appendChild(more);
+    }
+  }
+
+  filesEl.addEventListener('change', () => {
+    updateCount();
+    renderPreview();
+  });
+
+  clearBtn.addEventListener('click', () => {
+    filesEl.value = '';
+    updateCount();
+    previewEl.innerHTML = '';
+    setStatus('Ready.');
+  });
+
+  async function pingApi() {
+    const base = apiBaseEl.value.trim().replace(/\/$/, '');
+    const url = base + '/health';
+    try {
+      const r = await fetch(url, { method: 'GET' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      connPill.innerHTML = 'API: <span class="ok">ok</span>';
+      return true;
+    } catch (e) {
+      connPill.innerHTML = 'API: <span class="bad">down</span>';
+      return false;
+    }
+  }
+  pingApi();
+
+  analyzeBtn.addEventListener('click', async () => {
+    saveSettings();
+    const base = apiBaseEl.value.trim().replace(/\/$/, '');
+    const route = routeEl.value;
+    const url = base + route;
+
+    const files = Array.from(filesEl.files || []);
+    if (files.length === 0) return setStatus('Pick at least 1 image first.');
+
+    setStatus('Uploading ' + files.length + ' image(s)…');
+    analyzeBtn.disabled = true;
+
+    const form = new FormData();
+    files.forEach((f) => form.append('files', f, f.name));
+    form.append('mode', modeEl.value);
+    form.append('context', JSON.stringify({
+      game: 'Borderlands 4',
+      difficulty: 'UVH6_TRUE',
+      project: 'duumvirate'
+    }));
+
+    try {
+      const r = await fetch(url, { method: 'POST', body: form });
+      const text = await r.text();
+      let data;
+      try { data = JSON.parse(text); } catch { data = { raw: text }; }
+      if (!r.ok) setStatus({ error: 'request_failed', status: r.status, response: data });
+      else setStatus(data);
+    } catch (e) {
+      setStatus({ error: 'network_error', message: String(e) });
+    } finally {
+      analyzeBtn.disabled = false;
+      pingApi();
+    }
+  });
+
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+  }
+})();
+</script>
+</body>
+</html>
