@@ -233,5 +233,28 @@
   }
 })();
 </script>
+  <script>
+  document.addEventListener("paste", (event) => {
+    const items = event.clipboardData.items;
+
+    for (const item of items) {
+      if (item.type.startsWith("image/")) {
+        const file = item.getAsFile();
+        const img = document.createElement("img");
+        img.src = URL.createObjectURL(file);
+        img.style.maxWidth = "100%";
+        img.style.marginTop = "10px";
+
+        document.getElementById("output").appendChild(img);
+
+        console.log("Image received:", file);
+
+        const msg = document.createElement("p");
+        msg.textContent = "✅ Image captured. Analysis coming soon.";
+        document.getElementById("output").appendChild(msg);
+      }
+    }
+  });
+</script>
 </body>
 </html>
