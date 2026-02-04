@@ -1,10 +1,10 @@
 {
-  "name": "Duum.io \u2014 DuumGPT Portal",
+  "name": "Duum.io",
   "short_name": "Duum",
-  "start_url": "./index.html",
+  "start_url": "/",
   "display": "standalone",
   "background_color": "#0b0b0b",
-  "theme_color": "#111111",
+  "theme_color": "#0b0b0b",
   "icons": [
     {
       "src": "icon-192.png",
