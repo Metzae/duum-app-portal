@@ -1,4 +1,4 @@
-const CACHE = "duum-pwa-v1";
+const CACHE = "duumgpt-v1";
 const ASSETS = ["./", "./index.html", "./manifest.json", "./sw.js", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", (event) => {
