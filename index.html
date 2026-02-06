@@ -38,7 +38,10 @@
 <body>
 <header>
   <h1>Duum.io</h1>
-  <p>Upload one or more screenshots/photos and get an educated verdict.</p>
+  <p><font color="#FF0000">This is an alpha release that is actively in development.</font><br />Purpose: Upload or share screenshots/photos and get an educated verdict about your BL4 gear.</p>
+  <button id="installBtn" style="display:none;">
+    Install Duum.io
+  </button>
 </header>
 
 <main>
@@ -104,8 +107,8 @@
   </div>
 
   <div class="footer">
-    <div class="mono">DuumGPT Portal • MVP shell</div>
-    <div>Build first. Polish later. Add profit in the fourth act.</div>
+    <div class="mono">DuumGPT Portal</div>
+    <div>Build first. Polish later. Then we pwn.</div>
   </div>
 </main>
 
@@ -255,6 +258,24 @@
       }
     }
   });
+</script>
+<script>
+let deferredPrompt = null;
+const installBtn = document.getElementById("installBtn");
+
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  installBtn.style.display = "block";
+});
+
+installBtn.addEventListener("click", async () => {
+  if (!deferredPrompt) return;
+  deferredPrompt.prompt();
+  const choice = await deferredPrompt.userChoice;
+  deferredPrompt = null;
+  installBtn.style.display = "none";
+});
 </script>
 </body>
 </html>
