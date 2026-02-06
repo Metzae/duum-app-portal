@@ -73,7 +73,7 @@
   </div>
 
   <div class="card">
-    <label>Images (1–N)</label>
+    <label>Add pictures or screenshots</label>
     <input id="files" type="file" accept="image/*" multiple />
     <div class="hint">
       On mobile, you can pick from your gallery or camera. (Some browsers show the camera directly; others show “Take Photo” inside the picker.)
@@ -276,6 +276,17 @@ installBtn.addEventListener("click", async () => {
   deferredPrompt = null;
   installBtn.style.display = "none";
 });
+</script>
+<script>
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", async () => {
+    try {
+      const reg = await navigator.serviceWorker.register("/sw.js");
+      // Helps desktop pick up updates sooner
+      reg.update();
+    } catch {}
+  });
+}
 </script>
 </body>
 </html>
