@@ -108,7 +108,7 @@
 
   <div class="footer">
     <div class="mono">DuumGPT Portal</div>
-    <div>Build first. Polish later. Then we pwn.</div>
+    <div>Build first. Polish next. Pwn later.</div>
   </div>
 </main>
 
@@ -232,7 +232,9 @@
   });
 
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js').catch(() => {});
+    navigator.serviceWorker.register("/sw.js").then((reg) => {
+      reg.update();
+    });
   }
 })();
 </script>
