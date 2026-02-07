@@ -14,6 +14,48 @@ async function sha256Hex(arrayBuffer) {
   return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+function nowIso() {
+  return new Date().toISOString();
+}
+
+function kvAvailable(env) {
+  return !!env?.DUUM_KV && typeof env.DUUM_KV.get === "function" && typeof env.DUUM_KV.put === "function";
+}
+
+function cacheKeyForImage(hash) {
+  return `img:${hash}`;
+}
+
+function normalizeItemForSchema(item, slot) {
+  // Ensure the per-item object matches your schema shape exactly.
+  // Do not guess fields; default to null/unknown appropriately.
+  return {
+    slot: Number.isFinite(slot) ? slot : (item?.slot ?? null),
+    item_kind: item?.item_kind ?? "unknown",
+    name: item?.name ?? null,
+    manufacturer: item?.manufacturer ?? null,
+    level: item?.level ?? null,
+    dps: item?.dps ?? null,
+    damage: item?.damage ?? null,
+    rarity: item?.rarity ?? null,
+    elements: Array.isArray(item?.elements) && item.elements.length ? item.elements : ["unknown"],
+    notes: Array.isArray(item?.notes) ? item.notes : [],
+    confidence: typeof item?.confidence === "number" ? item.confidence : 0,
+  };
+}
+
+function buildBatchFromItems({ mode, items, verdict = "uncertain", reason = "", ok = true, confidence = 0 }) {
+  return {
+    ok,
+    image_count: items.length,
+    mode,
+    verdict,
+    confidence,
+    reason,
+    items,
+  };
+}
+
 export async function onRequestPost({ request, env }) {
   try {
     const contentType = request.headers.get("content-type") || "";
@@ -39,6 +81,8 @@ export async function onRequestPost({ request, env }) {
     const out = [];
     const imagesForVision = [];
 
+    // NEW: keep hashes aligned with slots
+    const slots = []; // [{ slot, sha256, mime, name }]
     for (const [i, f] of files.slice(0, MAX_FILES).entries()) {
       const buf = await f.arrayBuffer();
       const hash = await sha256Hex(buf);
@@ -51,12 +95,15 @@ export async function onRequestPost({ request, env }) {
         sha256: hash,
       });
 
-      // Only attempt vision for image-like inputs
       const mime = f.type || "";
+      slots.push({ slot: i + 1, sha256: hash, mime, name: f.name || "unnamed" });
+
+      // Only attempt vision for image-like inputs
       if (mime.startsWith("image/")) {
         const b64 = arrayBufferToBase64(buf);
         imagesForVision.push({
           slot: i + 1,
+          sha256: hash,
           dataUrl: `data:${mime};base64,${b64}`,
         });
       }
@@ -64,18 +111,43 @@ export async function onRequestPost({ request, env }) {
 
     const mode = form.get("mode") || "default";
 
-    // Default: do NOT call OpenAI (cost control)
-    let analysis = {
-      ok: false,
-      image_count: imagesForVision.length,
-      mode,
-      verdict: "uncertain",
-      confidence: 0,
-      reason:
-        VISION_ENABLED
-          ? "Vision available but not requested (set mode=vision)."
-          : "Vision disabled (cost control).",
-      items: imagesForVision.map((img) => ({
+    // ---------- KV CACHE LOOKUP (per image) ----------
+    const useKv = kvAvailable(env);
+
+    // We only *need* vision if mode==="vision" AND feature enabled.
+    const visionRequested = (mode === "vision");
+    const canUseVision = (VISION_ENABLED && visionRequested);
+
+    // If KV is present, try to load cached results for each image hash.
+    // Cache stores per-image results, not whole batch.
+    const cachedMap = new Map(); // sha256 -> cachedItem
+    if (useKv) {
+      const gets = await Promise.all(
+        imagesForVision.map((img) => env.DUUM_KV.get(cacheKeyForImage(img.sha256), { type: "json" }))
+      );
+
+      for (let idx = 0; idx < imagesForVision.length; idx++) {
+        const img = imagesForVision[idx];
+        const cached = gets[idx];
+        if (cached && typeof cached === "object" && cached.item) {
+          cachedMap.set(img.sha256, cached.item);
+        }
+      }
+    }
+
+    // Build initial items list: cached where available, otherwise placeholders.
+    const itemsInitial = imagesForVision.map((img) => {
+      const cachedItem = cachedMap.get(img.sha256);
+      if (cachedItem) {
+        const normalized = normalizeItemForSchema(cachedItem, img.slot);
+        normalized.notes = [
+          ...(normalized.notes || []),
+          `Cache hit (${img.sha256.slice(0, 8)}…).`,
+        ];
+        return normalized;
+      }
+
+      return {
         slot: img.slot,
         item_kind: "unknown",
         name: null,
@@ -85,20 +157,115 @@ export async function onRequestPost({ request, env }) {
         damage: null,
         rarity: null,
         elements: ["unknown"],
-        notes: [VISION_ENABLED ? "Set mode=vision to analyze." : "Vision disabled."],
+        notes: [
+          useKv ? `Cache miss (${img.sha256.slice(0, 8)}…).` : "KV cache not configured.",
+          canUseVision ? "Queued for vision." : (VISION_ENABLED ? "Set mode=vision to analyze." : "Vision disabled."),
+        ],
         confidence: 0,
-      })),
-    };
+      };
+    });
 
-    // Only call OpenAI if:
-    // 1) VISION_ENABLED is true, AND
-    // 2) mode is exactly "vision"
-    if (VISION_ENABLED && mode === "vision") {
-      analysis = await analyzeWithDuumGPT({
-        env,
-        images: imagesForVision,
-        mode,
-      });
+    // Default analysis (no paid call)
+    let analysis = buildBatchFromItems({
+      mode,
+      items: itemsInitial,
+      verdict: "uncertain",
+      confidence: 0,
+      ok: false,
+      reason: canUseVision
+        ? "Vision requested. Running analysis (uncached images only)."
+        : (VISION_ENABLED
+            ? (visionRequested ? "Vision requested but disabled by feature flag." : "Vision available but not requested (set mode=vision).")
+            : "Vision disabled (cost control)."),
+    });
+
+    // ---------- VISION RUN (ONLY IF ENABLED + REQUESTED) ----------
+    // Also: only send *uncached* images to OpenAI.
+    if (canUseVision) {
+      const uncachedImages = imagesForVision.filter((img) => !cachedMap.has(img.sha256));
+
+      if (uncachedImages.length === 0) {
+        // Everything came from cache — promote batch to ok:true
+        analysis = buildBatchFromItems({
+          mode,
+          items: itemsInitial,
+          verdict: "uncertain",
+          confidence: 0,
+          ok: true,
+          reason: "All images served from cache. No OpenAI call made.",
+        });
+      } else {
+        // Run OpenAI only for uncached images
+        const fresh = await analyzeWithDuumGPT({
+          env,
+          images: uncachedImages,
+          mode,
+        });
+
+        // Merge fresh results into the full item list by slot.
+        const freshBySlot = new Map();
+        if (fresh && Array.isArray(fresh.items)) {
+          for (const it of fresh.items) {
+            if (it && typeof it.slot === "number") freshBySlot.set(it.slot, it);
+          }
+        }
+
+        const mergedItems = imagesForVision.map((img) => {
+          const cachedItem = cachedMap.get(img.sha256);
+          if (cachedItem) {
+            return normalizeItemForSchema(cachedItem, img.slot);
+          }
+          const freshItem = freshBySlot.get(img.slot);
+          if (freshItem) {
+            const normalized = normalizeItemForSchema(freshItem, img.slot);
+            normalized.notes = [
+              ...(normalized.notes || []),
+              `Fresh analysis (${img.sha256.slice(0, 8)}…).`,
+            ];
+            return normalized;
+          }
+          // If model omitted something, keep placeholder
+          return itemsInitial.find((x) => x.slot === img.slot) || normalizeItemForSchema({}, img.slot);
+        });
+
+        // Write fresh results to KV (per image) so we never pay twice
+        if (useKv && freshBySlot.size) {
+          const puts = [];
+          for (const img of uncachedImages) {
+            const it = freshBySlot.get(img.slot);
+            if (!it) continue;
+            const normalized = normalizeItemForSchema(it, img.slot);
+            puts.push(
+              env.DUUM_KV.put(
+                cacheKeyForImage(img.sha256),
+                JSON.stringify({
+                  v: 1,
+                  saved_at: nowIso(),
+                  sha256: img.sha256,
+                  item: normalized,
+                }),
+                {
+                  // optional: expire cache entries after 30 days
+                  expirationTtl: 60 * 60 * 24 * 30,
+                }
+              )
+            );
+          }
+          await Promise.allSettled(puts);
+        }
+
+        // Compose final batch
+        analysis = buildBatchFromItems({
+          mode,
+          items: mergedItems,
+          verdict: fresh?.verdict ?? "uncertain",
+          confidence: typeof fresh?.confidence === "number" ? fresh.confidence : 0,
+          ok: !!fresh?.ok, // whether model says it succeeded
+          reason: fresh?.reason
+            ? `${fresh.reason} (Cached: ${cachedMap.size}, Fresh: ${uncachedImages.length})`
+            : `Analysis complete. (Cached: ${cachedMap.size}, Fresh: ${uncachedImages.length})`,
+        });
+      }
     }
 
     return json({
