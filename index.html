@@ -90,6 +90,20 @@
     </div>
   </div>
 
+<section style="margin-top:16px;">
+  <h2 style="margin:0 0 8px 0;">Ingest Screenshots</h2>
+
+  <input id="fileInput" type="file" accept="image/*" multiple />
+
+  <div style="margin-top:10px;">
+    <button id="ingestBtn">Ingest</button>
+  </div>
+
+  <pre id="ingestOut" style="margin-top:12px; white-space:pre-wrap; background:rgba(255,255,255,0.06); padding:12px; border-radius:12px; overflow:auto; max-height:40vh;">
+Waiting for upload…
+  </pre>
+</section>
+  
   <div class="card">
     <div class="row" style="justify-content:space-between;">
       <strong>Preview</strong>
@@ -290,5 +304,41 @@ if ("serviceWorker" in navigator) {
   });
 }
 </script>
+
+<script>
+  const fileInput = document.getElementById("fileInput");
+  const ingestBtn = document.getElementById("ingestBtn");
+  const ingestOut = document.getElementById("ingestOut");
+
+  ingestBtn.addEventListener("click", async () => {
+    try {
+      const files = fileInput.files;
+      if (!files || !files.length) {
+        ingestOut.textContent = "Pick one or more images first.";
+        return;
+      }
+
+      ingestBtn.disabled = true;
+      ingestOut.textContent = `Uploading ${files.length} image(s)…`;
+
+      const fd = new FormData();
+      for (const f of files) fd.append("files", f);
+
+      const res = await fetch("/api/ingest/items", {
+        method: "POST",
+        body: fd
+      });
+
+      const text = await res.text();
+      ingestOut.textContent = text;
+
+    } catch (err) {
+      ingestOut.textContent = "ERROR: " + (err?.message || String(err));
+    } finally {
+      ingestBtn.disabled = false;
+    }
+  });
+</script>
+  
 </body>
 </html>
