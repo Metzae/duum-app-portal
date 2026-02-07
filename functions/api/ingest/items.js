@@ -5,6 +5,12 @@ function json(data, status = 200) {
   });
 }
 
+async function sha256Hex(arrayBuffer) {
+  const hashBuffer = await crypto.subtle.digest("SHA-256", arrayBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 export async function onRequestPost({ request, env }) {
   try {
     const contentType = request.headers.get("content-type") || "";
