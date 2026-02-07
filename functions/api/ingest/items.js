@@ -91,7 +91,7 @@ const DUUM_INGEST_SCHEMA = {
 
     verdict: {
       type: "string",
-      enum: ["weapon_screenshot", "borderlands_non_item", "not_borderlands", "uncertain"]
+      enum: ["weapon_screenshot", "borderlands_non_item", "not_borderlands", "uncertain"],
     },
     confidence: { type: "number", minimum: 0, maximum: 1 },
     reason: { type: "string" },
@@ -105,7 +105,7 @@ const DUUM_INGEST_SCHEMA = {
           slot: { type: "integer" },
           item_kind: {
             type: "string",
-            enum: ["weapon", "shield", "ordnance", "class_mod", "enhancement", "artifact", "other", "unknown"]
+            enum: ["weapon", "shield", "ordnance", "class_mod", "enhancement", "artifact", "other", "unknown"],
           },
           name: { anyOf: [{ type: "string" }, { type: "null" }] },
           manufacturer: { anyOf: [{ type: "string" }, { type: "null" }] },
@@ -117,30 +117,29 @@ const DUUM_INGEST_SCHEMA = {
             type: "array",
             items: {
               type: "string",
-              enum: ["incendiary", "corrosive", "cryo", "shock", "radiation", "none", "unknown"]
-            }
+              enum: ["incendiary", "corrosive", "cryo", "shock", "radiation", "none", "unknown"],
+            },
           },
           notes: { type: "array", items: { type: "string" } },
-          confidence: { type: "number", minimum: 0, maximum: 1 }
+          confidence: { type: "number", minimum: 0, maximum: 1 },
         },
         required: [
-  "slot",
-  "item_kind",
-  "name",
-  "manufacturer",
-  "level",
-  "dps",
-  "damage",
-  "rarity",
-  "elements",
-  "notes",
-  "confidence"
-],
-
-      }
-    }
+          "slot",
+          "item_kind",
+          "name",
+          "manufacturer",
+          "level",
+          "dps",
+          "damage",
+          "rarity",
+          "elements",
+          "notes",
+          "confidence",
+        ],
+      },
+    },
   },
-  required: ["ok", "image_count", "mode", "verdict", "confidence", "reason", "items"]
+  required: ["ok", "image_count", "mode", "verdict", "confidence", "reason", "items"],
 };
 
 async function analyzeWithDuumGPT({ env, images, mode }) {
