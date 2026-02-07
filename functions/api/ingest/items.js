@@ -17,6 +17,7 @@ export async function onRequestPost({ request, env }) {
     if (!contentType.includes("multipart/form-data")) {
       return json({ ok: false, error: "Expected multipart/form-data" }, 400);
     }
+console.log("hasKey?", !!env?.OPENAI_API_KEY, "hasModel?", !!env?.OPENAI_MODEL);
 
     const form = await request.formData();
 
