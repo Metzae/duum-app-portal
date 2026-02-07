@@ -9,9 +9,9 @@
   <style>
     :root { color-scheme: dark; }
     body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; background:#0b0b0b; color:#eaeaea; }
-    header { padding: 18px 16px; border-bottom: 1px solid #1f1f1f; background:#0f0f0f; position: sticky; top:0; }
+    header { padding: 18px 16px; border-bottom: 1px solid #1f1f1f; background:#0f0f0f; position: sticky; top:0; z-index: 10; }
     header h1 { margin:0; font-size: 16px; letter-spacing: .4px; }
-    header p { margin:6px 0 0; font-size: 12px; color:#bdbdbd; }
+    header p { margin:6px 0 0; font-size: 12px; color:#bdbdbd; line-height: 1.35; }
     main { padding: 16px; max-width: 980px; margin: 0 auto; }
     .card { background:#111; border:1px solid #1f1f1f; border-radius: 14px; padding: 14px; margin-bottom: 12px; }
     .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
@@ -33,6 +33,8 @@
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
     .footer { padding: 24px 16px 60px; color:#8f8f8f; font-size: 12px; text-align:center; }
     a { color:#eaeaea; }
+
+    /* Rendered item cards */
     .itemcard { background:#0c0c0c; border:1px solid #222; border-radius:14px; padding:12px; }
     .itemtitle { font-weight:800; font-size:14px; margin:0 0 6px 0; }
     .itemmeta { font-size:12px; color:#bdbdbd; margin:0 0 10px 0; }
@@ -45,13 +47,15 @@
     .note ul { margin:6px 0 0 18px; padding:0; }
   </style>
 </head>
+
 <body>
 <header>
   <h1>Duum.io</h1>
-  <p><font color="#FF0000">This is an alpha release that is actively in development.</font><br />Purpose: Upload or share screenshots/photos and get an educated verdict about your BL4 gear.</p>
-  <button id="installBtn" style="display:none;">
-    Install Duum.io
-  </button>
+  <p>
+    <span style="color:#FF0000;">This is an alpha release that is actively in development.</span><br />
+    Purpose: Upload or share screenshots/photos and get an educated verdict about your BL4 gear.
+  </p>
+  <button id="installBtn" style="display:none;">Install Duum.io</button>
 </header>
 
 <main>
@@ -60,7 +64,7 @@
       <div>
         <label for="apiBase">API base URL</label><br />
         <input id="apiBase" type="text" placeholder="https://app.duum.io" />
-        <div class="hint">Local dev: <span class="mono">https://app.duum.io</span>.</div>
+        <div class="hint">Default: <span class="mono">this site</span>. Local dev: <span class="mono">http://localhost:1337</span>.</div>
       </div>
       <div>
         <label for="mode">Expertise</label><br />
@@ -69,7 +73,7 @@
           <option value="veteran" selected>Veteran</option>
           <option value="nerd">Nerd</option>
         </select>
-        <div class="hint">Same engine; different verbosity.</div>
+        <div class="hint">UI verbosity only (safe / free).</div>
       </div>
       <div>
         <label for="route">Route</label><br />
@@ -77,7 +81,7 @@
           <option value="/api/ingest/items" selected>/api/ingest/items (multi-image)</option>
           <option value="/api/duumgpt/ingest">/api/duumgpt/ingest</option>
         </select>
-        <div class="hint">We’ll implement the chosen route in DuumGPT.</div>
+        <div class="hint">Uses your Pages Function route.</div>
       </div>
     </div>
   </div>
@@ -86,21 +90,22 @@
     <label>Add pictures or screenshots</label>
     <input id="files" type="file" accept="image/*" multiple />
     <div class="hint">
-      On mobile, you can pick from your gallery or camera. (Some browsers show the camera directly; others show “Take Photo” inside the picker.)
+      Mobile: pick from gallery or camera. (Browser behavior varies.)
     </div>
 
-<div class="row" style="margin-top:12px;">
-  <button id="analyzeBtn">Upload</button>
-  <button id="clearBtn" class="secondary" renderedEl.innerHTML = '';>Clear</button>
+    <div class="row" style="margin-top:12px;">
+      <button id="analyzeBtn">Upload</button>
+      <button id="clearBtn" class="secondary">Clear</button>
 
-  <label class="pill" style="display:flex; gap:8px; align-items:center; cursor:pointer;">
-    <input id="aiToggle" type="checkbox" style="margin:0;" />
-    Analyze with AI (costs credits)
-  </label>
+      <label class="pill" style="display:flex; gap:8px; align-items:center; cursor:pointer;">
+        <input id="aiToggle" type="checkbox" style="margin:0;" />
+        Analyze with AI (costs credits)
+      </label>
 
-  <span class="pill" id="countPill">0 images</span>
-  <span class="pill" id="connPill">API: <span class="muted">not checked</span></span>
-</div>
+      <span class="pill" id="countPill">0 images</span>
+      <span class="pill" id="connPill">API: <span class="muted">not checked</span></span>
+    </div>
+
     <div class="hint small">
       Tip: For best iOS behavior, install as a Home Screen app (PWA).
     </div>
@@ -109,7 +114,7 @@
   <div class="card">
     <div class="row" style="justify-content:space-between;">
       <strong>Preview</strong>
-      <span class="small">Nothing uploads until you press Analyze.</span>
+      <span class="small">Nothing uploads until you press Upload.</span>
     </div>
     <div id="preview" class="grid preview" style="margin-top:10px;"></div>
   </div>
@@ -121,12 +126,16 @@
     </div>
     <div id="rendered" class="grid" style="margin-top:10px;"></div>
   </div>
-  
+
   <div class="card">
-    <div class="row" style="justify-content:space-between;">
+    <div class="row" style="justify-content:space-between; align-items:center;">
       <strong>Result</strong>
-      <span class="small">Structured JSON for the engine + UI.</span>
+      <div class="row" style="gap:8px;">
+        <button id="copyJsonBtn" class="secondary">Copy JSON</button>
+        <button id="downloadJsonBtn" class="secondary">Download JSON</button>
+      </div>
     </div>
+    <div class="small" style="margin-top:6px; color:#9f9f9f;">Structured JSON for the engine + UI.</div>
     <div id="status" class="status" style="margin-top:10px;">Ready.</div>
   </div>
 
@@ -146,117 +155,51 @@
   const clearBtn = document.getElementById('clearBtn');
   const statusEl = document.getElementById('status');
   const previewEl = document.getElementById('preview');
+  const renderedEl = document.getElementById('rendered');
   const countPill = document.getElementById('countPill');
   const connPill = document.getElementById('connPill');
   const aiToggleEl = document.getElementById('aiToggle');
-  const renderedEl = document.getElementById('rendered');
+  const copyJsonBtn = document.getElementById('copyJsonBtn');
+  const downloadJsonBtn = document.getElementById('downloadJsonBtn');
 
+  let lastPayload = null;
+
+  // Defaults (sane)
   apiBaseEl.value = localStorage.getItem('duum_api_base') || window.location.origin;
   modeEl.value = localStorage.getItem('duum_mode') || 'veteran';
   routeEl.value = localStorage.getItem('duum_route') || '/api/ingest/items';
-
   aiToggleEl.checked = (localStorage.getItem('duum_ai') === '1');
-  aiToggleEl.addEventListener('change', () => localStorage.setItem('duum_ai', aiToggleEl.checked ? '1' : '0'));
 
   function saveSettings() {
     localStorage.setItem('duum_api_base', apiBaseEl.value.trim());
     localStorage.setItem('duum_mode', modeEl.value);
     localStorage.setItem('duum_route', routeEl.value);
+    localStorage.setItem('duum_ai', aiToggleEl.checked ? '1' : '0');
   }
   apiBaseEl.addEventListener('change', saveSettings);
   modeEl.addEventListener('change', saveSettings);
   routeEl.addEventListener('change', saveSettings);
+  aiToggleEl.addEventListener('change', saveSettings);
 
-function esc(s) {
-  return String(s).replace(/[&<>"']/g, (c) => ({
-    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;"
-  }[c]));
-}
-
-function formatMeta(it) {
-  const bits = [];
-  if (it.manufacturer) bits.push(it.manufacturer);
-  if (it.level != null) bits.push(`Lvl ${it.level}`);
-  if (it.rarity) bits.push(it.rarity);
-  return bits.length ? bits.join(" • ") : "—";
-}
-
-function renderItemsCardView(payload) {
-  renderedEl.innerHTML = "";
-
-  const analysis = payload?.analysis;
-  const items = analysis?.items || [];
-  const verdict = analysis?.verdict || "uncertain";
-  const reason = analysis?.reason || "";
-
-  // Top banner card (batch-level)
-  const banner = document.createElement("div");
-  banner.className = "itemcard";
-  banner.innerHTML = `
-    <div class="itemtitle">Batch verdict: ${esc(verdict)}</div>
-    <div class="itemmeta">${esc(reason)}</div>
-  `;
-  renderedEl.appendChild(banner);
-
-  if (!items.length) {
-    const empty = document.createElement("div");
-    empty.className = "itemcard";
-    empty.innerHTML = `<div class="itemtitle">No items</div><div class="itemmeta">Nothing to render.</div>`;
-    renderedEl.appendChild(empty);
-    return;
+  function setButtonsEnabled(enabled) {
+    if (copyJsonBtn) copyJsonBtn.disabled = !enabled;
+    if (downloadJsonBtn) downloadJsonBtn.disabled = !enabled;
   }
-
-  for (const it of items) {
-    const title = it.name || `Unknown item (slot ${it.slot ?? "?"})`;
-    const meta = formatMeta(it);
-
-    const elements = Array.isArray(it.elements) ? it.elements : [];
-    const pills = elements.length
-      ? elements.map(e => `<span class="pill">${esc(e)}</span>`).join(" ")
-      : `<span class="pill">unknown</span>`;
-
-    const conf = Math.max(0, Math.min(1, Number(it.confidence ?? 0)));
-    const confPct = Math.round(conf * 100);
-
-    const dps = (it.dps == null) ? "—" : String(it.dps);
-    const dmg = (it.damage == null) ? "—" : esc(it.damage);
-
-    const notes = Array.isArray(it.notes) ? it.notes : [];
-    const notesHtml = notes.length
-      ? `<div class="note"><strong>Notes</strong><ul>${notes.map(n => `<li>${esc(n)}</li>`).join("")}</ul></div>`
-      : "";
-
-    const card = document.createElement("div");
-    card.className = "itemcard";
-    card.innerHTML = `
-      <div class="itemtitle">${esc(title)}</div>
-      <div class="itemmeta">${esc(meta)}</div>
-
-      <div class="row" style="gap:8px; margin-bottom:10px;">${pills}</div>
-
-      <div class="kv">
-        <div class="k">Kind</div><div class="v">${esc(it.item_kind || "unknown")}</div>
-        <div class="k">DPS</div><div class="v">${dps}</div>
-        <div class="k">Damage</div><div class="v">${dmg}</div>
-        <div class="k">Confidence</div>
-        <div class="v">
-          <div class="bar" title="${confPct}%">
-            <div style="width:${confPct}%"></div>
-          </div>
-          <div class="small mono" style="margin-top:6px;">${confPct}%</div>
-        </div>
-      </div>
-
-      ${notesHtml}
-    `;
-    renderedEl.appendChild(card);
-  }
-}
 
   function setStatus(v) {
-    if (typeof v === 'string') statusEl.textContent = v;
-    else statusEl.textContent = JSON.stringify(v, null, 2);
+    if (typeof v === 'string') {
+      statusEl.textContent = v;
+      lastPayload = null;
+      setButtonsEnabled(false);
+    } else {
+      statusEl.textContent = JSON.stringify(v, null, 2);
+      lastPayload = v;
+      setButtonsEnabled(true);
+    }
   }
+
+  // Init button state
+  setButtonsEnabled(false);
 
   function updateCount() {
     const n = filesEl.files ? filesEl.files.length : 0;
@@ -283,6 +226,91 @@ function renderItemsCardView(payload) {
     }
   }
 
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;"
+    }[c]));
+  }
+
+  function formatMeta(it) {
+    const bits = [];
+    if (it.manufacturer) bits.push(it.manufacturer);
+    if (it.level != null) bits.push(`Lvl ${it.level}`);
+    if (it.rarity) bits.push(it.rarity);
+    return bits.length ? bits.join(" • ") : "—";
+  }
+
+  function renderItemsCardView(payload) {
+    renderedEl.innerHTML = "";
+
+    const analysis = payload?.analysis;
+    const items = analysis?.items || [];
+    const verdict = analysis?.verdict || "uncertain";
+    const reason = analysis?.reason || "";
+
+    const banner = document.createElement("div");
+    banner.className = "itemcard";
+    banner.innerHTML = `
+      <div class="itemtitle">Batch verdict: ${esc(verdict)}</div>
+      <div class="itemmeta">${esc(reason)}</div>
+    `;
+    renderedEl.appendChild(banner);
+
+    if (!items.length) {
+      const empty = document.createElement("div");
+      empty.className = "itemcard";
+      empty.innerHTML = `<div class="itemtitle">No items</div><div class="itemmeta">Nothing to render.</div>`;
+      renderedEl.appendChild(empty);
+      return;
+    }
+
+    for (const it of items) {
+      const title = it.name || `Unknown item (slot ${it.slot ?? "?"})`;
+      const meta = formatMeta(it);
+
+      const elements = Array.isArray(it.elements) ? it.elements : [];
+      const pills = elements.length
+        ? elements.map(e => `<span class="pill">${esc(e)}</span>`).join(" ")
+        : `<span class="pill">unknown</span>`;
+
+      const conf = Math.max(0, Math.min(1, Number(it.confidence ?? 0)));
+      const confPct = Math.round(conf * 100);
+
+      const dps = (it.dps == null) ? "—" : String(it.dps);
+      const dmg = (it.damage == null) ? "—" : esc(it.damage);
+
+      const notes = Array.isArray(it.notes) ? it.notes : [];
+      const notesHtml = notes.length
+        ? `<div class="note"><strong>Notes</strong><ul>${notes.map(n => `<li>${esc(n)}</li>`).join("")}</ul></div>`
+        : "";
+
+      const card = document.createElement("div");
+      card.className = "itemcard";
+      card.innerHTML = `
+        <div class="itemtitle">${esc(title)}</div>
+        <div class="itemmeta">${esc(meta)}</div>
+
+        <div class="row" style="gap:8px; margin-bottom:10px;">${pills}</div>
+
+        <div class="kv">
+          <div class="k">Kind</div><div class="v">${esc(it.item_kind || "unknown")}</div>
+          <div class="k">DPS</div><div class="v">${dps}</div>
+          <div class="k">Damage</div><div class="v">${dmg}</div>
+          <div class="k">Confidence</div>
+          <div class="v">
+            <div class="bar" title="${confPct}%">
+              <div style="width:${confPct}%"></div>
+            </div>
+            <div class="small mono" style="margin-top:6px;">${confPct}%</div>
+          </div>
+        </div>
+
+        ${notesHtml}
+      `;
+      renderedEl.appendChild(card);
+    }
+  }
+
   filesEl.addEventListener('change', () => {
     updateCount();
     renderPreview();
@@ -292,12 +320,15 @@ function renderItemsCardView(payload) {
     filesEl.value = '';
     updateCount();
     previewEl.innerHTML = '';
+    renderedEl.innerHTML = '';
+    lastPayload = null;
+    setButtonsEnabled(false);
     setStatus('Ready.');
   });
 
   async function pingApi() {
     const base = apiBaseEl.value.trim().replace(/\/$/, '');
-    const url = base + '/health';
+    const url = base + '/health'; // optional endpoint; OK if it doesn't exist
     try {
       const r = await fetch(url, { method: 'GET' });
       if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -312,6 +343,7 @@ function renderItemsCardView(payload) {
 
   analyzeBtn.addEventListener('click', async () => {
     saveSettings();
+
     const base = apiBaseEl.value.trim().replace(/\/$/, '');
     const route = routeEl.value;
     const url = base + route;
@@ -324,13 +356,18 @@ function renderItemsCardView(payload) {
 
     const form = new FormData();
     files.forEach((f) => form.append('files', f, f.name));
-    // Cost control: only request OpenAI when AI toggle is enabled
+
+    // Cost control: only request OpenAI when toggle is enabled.
+    // Backend triggers paid analysis ONLY when mode === "vision".
     form.append('mode', aiToggleEl.checked ? 'vision' : 'default');
-    form.append('verbosity', modeEl.value); // keep your old "Expertise" choice for later
+
+    // Keep your UI "Expertise" choice for later (safe / free metadata).
+    form.append('verbosity', modeEl.value);
+
     form.append('context', JSON.stringify({
       game: 'Borderlands 4',
       difficulty: 'UVH6_TRUE',
-      project: 'duumvirate'
+      project: 'duumio'
     }));
 
     try {
@@ -338,10 +375,16 @@ function renderItemsCardView(payload) {
       const text = await r.text();
       let data;
       try { data = JSON.parse(text); } catch { data = { raw: text }; }
-      if (!r.ok) setStatus({ error: 'request_failed', status: r.status, response: data });
-      else setStatus(data);
-      try { renderItemsCardView(data); } catch {}
+
+      if (!r.ok) {
+        renderedEl.innerHTML = '';
+        setStatus({ error: 'request_failed', status: r.status, response: data });
+      } else {
+        setStatus(data);
+        try { renderItemsCardView(data); } catch {}
+      }
     } catch (e) {
+      renderedEl.innerHTML = '';
       setStatus({ error: 'network_error', message: String(e) });
     } finally {
       analyzeBtn.disabled = false;
@@ -349,104 +392,97 @@ function renderItemsCardView(payload) {
     }
   });
 
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register("/sw.js").then((reg) => {
-      reg.update();
+  // Copy / Download
+  copyJsonBtn.addEventListener('click', async () => {
+    if (!lastPayload) return;
+    try {
+      const text = JSON.stringify(lastPayload, null, 2);
+      await navigator.clipboard.writeText(text);
+      const old = copyJsonBtn.textContent;
+      copyJsonBtn.textContent = 'Copied!';
+      setTimeout(() => (copyJsonBtn.textContent = old), 900);
+    } catch (e) {
+      setStatus({ error: 'clipboard_failed', message: String(e) });
+    }
+  });
+
+  downloadJsonBtn.addEventListener('click', () => {
+    if (!lastPayload) return;
+    const text = JSON.stringify(lastPayload, null, 2);
+    const blob = new Blob([text], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `duum-result-${Date.now()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  });
+
+  // Paste-to-preview (captures clipboard images into the preview area)
+  document.addEventListener("paste", (event) => {
+    const items = event.clipboardData && event.clipboardData.items;
+    if (!items) return;
+
+    for (const item of items) {
+      if (item.type && item.type.startsWith("image/")) {
+        const file = item.getAsFile();
+        if (!file) continue;
+
+        // If there are already selected files, we can't programmatically append to <input type=file>.
+        // So we just show the preview and tell the user what to do.
+        const url = URL.createObjectURL(file);
+        const div = document.createElement("div");
+        const img = document.createElement("img");
+        img.src = url;
+        img.alt = "pasted image";
+        div.appendChild(img);
+
+        const note = document.createElement("div");
+        note.className = "small";
+        note.style.marginTop = "6px";
+        note.textContent = "Pasted image preview (clipboard). To upload, add it via the file picker above.";
+        div.appendChild(note);
+
+        previewEl.prepend(div);
+      }
+    }
+  });
+
+  // Service worker (single registration)
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", async () => {
+      try {
+        const reg = await navigator.serviceWorker.register("/sw.js");
+        reg.update();
+      } catch {}
     });
   }
 })();
 </script>
-  <script>
-  document.addEventListener("paste", (event) => {
-    const items = event.clipboardData.items;
-
-    for (const item of items) {
-      if (item.type.startsWith("image/")) {
-        const file = item.getAsFile();
-        const img = document.createElement("img");
-        img.src = URL.createObjectURL(file);
-        img.style.maxWidth = "100%";
-        img.style.marginTop = "10px";
-
-        document.getElementById("preview").appendChild(img);
-
-        console.log("Image received:", file);
-
-        const msg = document.createElement("p");
-        msg.textContent = "✅ Image captured. Analysis coming soon.";
-        document.getElementById("preview").appendChild(msg);
-      }
-    }
-  });
-</script>
-<script>
-let deferredPrompt = null;
-const installBtn = document.getElementById("installBtn");
-
-window.addEventListener("beforeinstallprompt", (e) => {
-  e.preventDefault();
-  deferredPrompt = e;
-  installBtn.style.display = "block";
-});
-
-installBtn.addEventListener("click", async () => {
-  if (!deferredPrompt) return;
-  deferredPrompt.prompt();
-  const choice = await deferredPrompt.userChoice;
-  deferredPrompt = null;
-  installBtn.style.display = "none";
-});
-</script>
-<script>
-if ("serviceWorker" in navigator) {
-  window.addEventListener("load", async () => {
-    try {
-      const reg = await navigator.serviceWorker.register("/sw.js");
-      // Helps desktop pick up updates sooner
-      reg.update();
-    } catch {}
-  });
-}
-</script>
 
 <script>
-  const ingestBtn = document.getElementById("ingestBtn");
-  const ingestOut = document.getElementById("ingestOut");
-  const apiBaseEl = document.getElementById("apiBase"); // or whatever your input's id is
+  // PWA install prompt
+  let deferredPrompt = null;
+  const installBtn = document.getElementById("installBtn");
 
-  if (apiBaseEl && (!apiBaseEl.value || apiBaseEl.value.includes("localhost"))) {
-    apiBaseEl.value = window.location.origin;
-  }
+  window.addEventListener("beforeinstallprompt", (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    installBtn.style.display = "block";
+  });
 
-  ingestBtn.addEventListener("click", async () => {
-    try {
-      const files = fileInput.files;
-      if (!files || !files.length) {
-        ingestOut.textContent = "Pick one or more images first.";
-        return;
-      }
-
-      ingestBtn.disabled = true;
-      ingestOut.textContent = `Uploading ${files.length} image(s)…`;
-
-      const fd = new FormData();
-      for (const f of files) fd.append("files", f);
-
-      const res = await fetch("/api/ingest/items", {
-        method: "POST",
-        body: fd
-      });
-
-      const text = await res.text();
-      ingestOut.textContent = text;
-
-    } catch (err) {
-      ingestOut.textContent = "ERROR: " + (err?.message || String(err));
-    } finally {
-      ingestBtn.disabled = false;
-    }
+  installBtn.addEventListener("click", async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    await deferredPrompt.userChoice;
+    deferredPrompt = null;
+    installBtn.style.display = "none";
   });
 </script>
-  
+
 </body>
 </html>
