@@ -123,7 +123,20 @@ const DUUM_INGEST_SCHEMA = {
           notes: { type: "array", items: { type: "string" } },
           confidence: { type: "number", minimum: 0, maximum: 1 }
         },
-        required: ["slot", "item_kind", "elements", "notes", "confidence"]
+        required: [
+  "slot",
+  "item_kind",
+  "name",
+  "manufacturer",
+  "level",
+  "dps",
+  "damage",
+  "rarity",
+  "elements",
+  "notes",
+  "confidence"
+],
+
       }
     }
   },
