@@ -1,7 +1,10 @@
+// Cost control
+const VISION_ENABLED = false; // flip to true when you're ready / funded
+
 function json(data, status = 200) {
   return new Response(JSON.stringify(data, null, 2), {
     status,
-    headers: { "content-type": "application/json; charset=utf-8" }
+    headers: { "content-type": "application/json; charset=utf-8" },
   });
 }
 
@@ -17,7 +20,6 @@ export async function onRequestPost({ request, env }) {
     if (!contentType.includes("multipart/form-data")) {
       return json({ ok: false, error: "Expected multipart/form-data" }, 400);
     }
-console.log("hasKey?", !!env?.OPENAI_API_KEY, "hasModel?", !!env?.OPENAI_MODEL);
 
     const form = await request.formData();
 
@@ -31,7 +33,7 @@ console.log("hasKey?", !!env?.OPENAI_API_KEY, "hasModel?", !!env?.OPENAI_MODEL);
       );
     }
 
-    // Hard safety caps (tune later)
+    // Keep this small while you're iterating
     const MAX_FILES = 10;
 
     const out = [];
@@ -46,7 +48,7 @@ console.log("hasKey?", !!env?.OPENAI_API_KEY, "hasModel?", !!env?.OPENAI_MODEL);
         name: f.name || "unnamed",
         type: f.type || "application/octet-stream",
         size_bytes: buf.byteLength,
-        sha256: hash
+        sha256: hash,
       });
 
       // Only attempt vision for image-like inputs
@@ -55,24 +57,56 @@ console.log("hasKey?", !!env?.OPENAI_API_KEY, "hasModel?", !!env?.OPENAI_MODEL);
         const b64 = arrayBufferToBase64(buf);
         imagesForVision.push({
           slot: i + 1,
-          dataUrl: `data:${mime};base64,${b64}`
+          dataUrl: `data:${mime};base64,${b64}`,
         });
       }
     }
 
-    // Call Duum vision (real step)
-    const analysis = await analyzeWithDuumGPT({
-      env,
-      images: imagesForVision,
-      mode: form.get("mode") || "default"
-    });
+    const mode = form.get("mode") || "default";
+
+    // Default: do NOT call OpenAI (cost control)
+    let analysis = {
+      ok: false,
+      image_count: imagesForVision.length,
+      mode,
+      verdict: "uncertain",
+      confidence: 0,
+      reason:
+        VISION_ENABLED
+          ? "Vision available but not requested (set mode=vision)."
+          : "Vision disabled (cost control).",
+      items: imagesForVision.map((img) => ({
+        slot: img.slot,
+        item_kind: "unknown",
+        name: null,
+        manufacturer: null,
+        level: null,
+        dps: null,
+        damage: null,
+        rarity: null,
+        elements: ["unknown"],
+        notes: [VISION_ENABLED ? "Set mode=vision to analyze." : "Vision disabled."],
+        confidence: 0,
+      })),
+    };
+
+    // Only call OpenAI if:
+    // 1) VISION_ENABLED is true, AND
+    // 2) mode is exactly "vision"
+    if (VISION_ENABLED && mode === "vision") {
+      analysis = await analyzeWithDuumGPT({
+        env,
+        images: imagesForVision,
+        mode,
+      });
+    }
 
     return json({
       ok: true,
       received_count: out.length,
       files: out,
       vision_image_count: imagesForVision.length,
-      analysis
+      analysis,
     });
   } catch (err) {
     return json({ ok: false, error: String(err?.message || err) }, 500);
@@ -165,8 +199,8 @@ async function analyzeWithDuumGPT({ env, images, mode }) {
         rarity: null,
         elements: ["unknown"],
         notes: ["Missing OPENAI_API_KEY."],
-        confidence: 0
-      }))
+        confidence: 0,
+      })),
     };
   }
 
@@ -178,7 +212,7 @@ async function analyzeWithDuumGPT({ env, images, mode }) {
       verdict: "uncertain",
       confidence: 0,
       reason: "No image/* files were provided.",
-      items: []
+      items: [],
     };
   }
 
@@ -191,12 +225,12 @@ async function analyzeWithDuumGPT({ env, images, mode }) {
         `- Return null for any field you cannot read. Do NOT guess.\n` +
         `- If an image is not a BL4 item screen, set item_kind="unknown" and add a note.\n` +
         `- "verdict" is for the batch; "items" is per image.\n` +
-        `Mode: ${mode}`
+        `Mode: ${mode}`,
     },
     ...images.map((img) => ({
       type: "input_image",
-      image_url: img.dataUrl
-    }))
+      image_url: img.dataUrl,
+    })),
   ];
 
   const payload = {
@@ -204,27 +238,27 @@ async function analyzeWithDuumGPT({ env, images, mode }) {
     input: [
       {
         role: "user",
-        content: userContent
-      }
+        content: userContent,
+      },
     ],
     text: {
       format: {
         type: "json_schema",
         name: "duum_ingest_items",
         strict: true,
-        schema: DUUM_INGEST_SCHEMA
-      }
+        schema: DUUM_INGEST_SCHEMA,
+      },
     },
-    max_output_tokens: 900
+    max_output_tokens: 450, // lower = cheaper
   };
 
   const resp = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
-      "Authorization": `Bearer ${apiKey}`,
-      "Content-Type": "application/json"
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
     },
-    body: JSON.stringify(payload)
+    body: JSON.stringify(payload),
   });
 
   if (!resp.ok) {
@@ -247,21 +281,16 @@ async function analyzeWithDuumGPT({ env, images, mode }) {
         rarity: null,
         elements: ["unknown"],
         notes: ["OpenAI API call failed."],
-        confidence: 0
-      }))
+        confidence: 0,
+      })),
     };
   }
 
   const data = await resp.json();
-
-  // With json_schema, output_text should be valid JSON text.
   const raw = data.output_text;
-  try {
-    const parsed = JSON.parse(raw);
 
-    // Ensure slots match original slots (optional but nice)
-    // If model omitted some, we still return what we got.
-    return parsed;
+  try {
+    return JSON.parse(raw);
   } catch {
     return {
       ok: false,
@@ -281,20 +310,24 @@ async function analyzeWithDuumGPT({ env, images, mode }) {
         rarity: null,
         elements: ["unknown"],
         notes: ["Non-JSON output from model."],
-        confidence: 0
-      }))
+        confidence: 0,
+      })),
     };
   }
 }
 
 /** ---- tiny utilities ---- */
 
-function arrayBufferToBase64(buf) {
+// Worker-safe base64: no spread args, no giant call stacks
+function arrayBufferToBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 8192;
   let binary = "";
-  const bytes = new Uint8Array(buf);
-  const chunkSize = 0x8000;
   for (let i = 0; i < bytes.length; i += chunkSize) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+    const chunk = bytes.subarray(i, i + chunkSize);
+    for (let j = 0; j < chunk.length; j++) {
+      binary += String.fromCharCode(chunk[j]);
+    }
   }
   return btoa(binary);
 }
