@@ -49,8 +49,8 @@
     <div class="row">
       <div>
         <label for="apiBase">API base URL</label><br />
-        <input id="apiBase" type="text" placeholder="http://localhost:1337" />
-        <div class="hint">Local dev: <span class="mono">http://localhost:1337</span>. Later: <span class="mono">https://api.duum.io</span>.</div>
+        <input id="apiBase" type="text" placeholder="https://api.duum.io" />
+        <div class="hint">Local dev: <span class="mono">https://api.duum.io</span>.</div>
       </div>
       <div>
         <label for="mode">Expertise</label><br />
@@ -309,6 +309,11 @@ if ("serviceWorker" in navigator) {
   const fileInput = document.getElementById("fileInput");
   const ingestBtn = document.getElementById("ingestBtn");
   const ingestOut = document.getElementById("ingestOut");
+  const apiBaseEl = document.getElementById("apiBase"); // or whatever your input's id is
+
+  if (apiBaseEl && (!apiBaseEl.value || apiBaseEl.value.includes("localhost"))) {
+    apiBaseEl.value = window.location.origin;
+  }
 
   ingestBtn.addEventListener("click", async () => {
     try {
