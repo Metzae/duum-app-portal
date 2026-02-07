@@ -79,31 +79,23 @@
       On mobile, you can pick from your gallery or camera. (Some browsers show the camera directly; others show “Take Photo” inside the picker.)
     </div>
 
-    <div class="row" style="margin-top:12px;">
-      <button id="analyzeBtn">Analyze</button>
-      <button id="clearBtn" class="secondary">Clear</button>
-      <span class="pill" id="countPill">0 images</span>
-      <span class="pill" id="connPill">API: <span class="muted">not checked</span></span>
-    </div>
+<div class="row" style="margin-top:12px;">
+  <button id="analyzeBtn">Upload</button>
+  <button id="clearBtn" class="secondary">Clear</button>
+
+  <label class="pill" style="display:flex; gap:8px; align-items:center; cursor:pointer;">
+    <input id="aiToggle" type="checkbox" style="margin:0;" />
+    Analyze with AI (costs credits)
+  </label>
+
+  <span class="pill" id="countPill">0 images</span>
+  <span class="pill" id="connPill">API: <span class="muted">not checked</span></span>
+</div>
     <div class="hint small">
       Tip: For best iOS behavior, install as a Home Screen app (PWA).
     </div>
   </div>
 
-<section style="margin-top:16px;">
-  <h2 style="margin:0 0 8px 0;">Ingest Screenshots</h2>
-
-  <input id="fileInput" type="file" accept="image/*" multiple />
-
-  <div style="margin-top:10px;">
-    <button id="ingestBtn">Ingest</button>
-  </div>
-
-  <pre id="ingestOut" style="margin-top:12px; white-space:pre-wrap; background:rgba(255,255,255,0.06); padding:12px; border-radius:12px; overflow:auto; max-height:40vh;">
-Waiting for upload…
-  </pre>
-</section>
-  
   <div class="card">
     <div class="row" style="justify-content:space-between;">
       <strong>Preview</strong>
@@ -138,10 +130,14 @@ Waiting for upload…
   const previewEl = document.getElementById('preview');
   const countPill = document.getElementById('countPill');
   const connPill = document.getElementById('connPill');
+  const aiToggleEl = document.getElementById('aiToggle');
 
-  apiBaseEl.value = localStorage.getItem('duum_api_base') || 'http://localhost:1337';
-  modeEl.value = localStorage.getItem('duum_mode') || 'no_fluff';
+  apiBaseEl.value = localStorage.getItem('duum_api_base') || window.location.origin;
+  modeEl.value = localStorage.getItem('duum_mode') || 'veteran';
   routeEl.value = localStorage.getItem('duum_route') || '/api/ingest/items';
+
+  aiToggleEl.checked = (localStorage.getItem('duum_ai') === '1');
+  aiToggleEl.addEventListener('change', () => localStorage.setItem('duum_ai', aiToggleEl.checked ? '1' : '0'));
 
   function saveSettings() {
     localStorage.setItem('duum_api_base', apiBaseEl.value.trim());
@@ -223,7 +219,9 @@ Waiting for upload…
 
     const form = new FormData();
     files.forEach((f) => form.append('files', f, f.name));
-    form.append('mode', modeEl.value);
+    // Cost control: only request OpenAI when AI toggle is enabled
+    form.append('mode', aiToggleEl.checked ? 'vision' : 'default');
+    form.append('verbosity', modeEl.value); // keep your old "Expertise" choice for later
     form.append('context', JSON.stringify({
       game: 'Borderlands 4',
       difficulty: 'UVH6_TRUE',
@@ -264,13 +262,13 @@ Waiting for upload…
         img.style.maxWidth = "100%";
         img.style.marginTop = "10px";
 
-        document.getElementById("output").appendChild(img);
+        document.getElementById("preview").appendChild(img);
 
         console.log("Image received:", file);
 
         const msg = document.createElement("p");
         msg.textContent = "✅ Image captured. Analysis coming soon.";
-        document.getElementById("output").appendChild(msg);
+        document.getElementById("preview").appendChild(msg);
       }
     }
   });
@@ -306,7 +304,6 @@ if ("serviceWorker" in navigator) {
 </script>
 
 <script>
-  const fileInput = document.getElementById("fileInput");
   const ingestBtn = document.getElementById("ingestBtn");
   const ingestOut = document.getElementById("ingestOut");
   const apiBaseEl = document.getElementById("apiBase"); // or whatever your input's id is
