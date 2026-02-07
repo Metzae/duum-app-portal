@@ -33,6 +33,16 @@
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
     .footer { padding: 24px 16px 60px; color:#8f8f8f; font-size: 12px; text-align:center; }
     a { color:#eaeaea; }
+    .itemcard { background:#0c0c0c; border:1px solid #222; border-radius:14px; padding:12px; }
+    .itemtitle { font-weight:800; font-size:14px; margin:0 0 6px 0; }
+    .itemmeta { font-size:12px; color:#bdbdbd; margin:0 0 10px 0; }
+    .kv { display:grid; grid-template-columns: 92px 1fr; gap:6px 10px; font-size:12px; }
+    .kv .k { color:#9f9f9f; }
+    .kv .v { color:#eaeaea; }
+    .bar { height:8px; background:#111; border:1px solid #222; border-radius:999px; overflow:hidden; }
+    .bar > div { height:100%; background:#7cff9e; width:0%; }
+    .note { margin-top:10px; font-size:12px; color:#cfcfcf; }
+    .note ul { margin:6px 0 0 18px; padding:0; }
   </style>
 </head>
 <body>
@@ -81,7 +91,7 @@
 
 <div class="row" style="margin-top:12px;">
   <button id="analyzeBtn">Upload</button>
-  <button id="clearBtn" class="secondary">Clear</button>
+  <button id="clearBtn" class="secondary" renderedEl.innerHTML = '';>Clear</button>
 
   <label class="pill" style="display:flex; gap:8px; align-items:center; cursor:pointer;">
     <input id="aiToggle" type="checkbox" style="margin:0;" />
@@ -104,6 +114,14 @@
     <div id="preview" class="grid preview" style="margin-top:10px;"></div>
   </div>
 
+  <div class="card">
+    <div class="row" style="justify-content:space-between;">
+      <strong>Rendered</strong>
+      <span class="small">Human-readable cards from the JSON.</span>
+    </div>
+    <div id="rendered" class="grid" style="margin-top:10px;"></div>
+  </div>
+  
   <div class="card">
     <div class="row" style="justify-content:space-between;">
       <strong>Result</strong>
@@ -131,6 +149,7 @@
   const countPill = document.getElementById('countPill');
   const connPill = document.getElementById('connPill');
   const aiToggleEl = document.getElementById('aiToggle');
+  const renderedEl = document.getElementById('rendered');
 
   apiBaseEl.value = localStorage.getItem('duum_api_base') || window.location.origin;
   modeEl.value = localStorage.getItem('duum_mode') || 'veteran';
@@ -147,6 +166,92 @@
   apiBaseEl.addEventListener('change', saveSettings);
   modeEl.addEventListener('change', saveSettings);
   routeEl.addEventListener('change', saveSettings);
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;"
+  }[c]));
+}
+
+function formatMeta(it) {
+  const bits = [];
+  if (it.manufacturer) bits.push(it.manufacturer);
+  if (it.level != null) bits.push(`Lvl ${it.level}`);
+  if (it.rarity) bits.push(it.rarity);
+  return bits.length ? bits.join(" • ") : "—";
+}
+
+function renderItemsCardView(payload) {
+  renderedEl.innerHTML = "";
+
+  const analysis = payload?.analysis;
+  const items = analysis?.items || [];
+  const verdict = analysis?.verdict || "uncertain";
+  const reason = analysis?.reason || "";
+
+  // Top banner card (batch-level)
+  const banner = document.createElement("div");
+  banner.className = "itemcard";
+  banner.innerHTML = `
+    <div class="itemtitle">Batch verdict: ${esc(verdict)}</div>
+    <div class="itemmeta">${esc(reason)}</div>
+  `;
+  renderedEl.appendChild(banner);
+
+  if (!items.length) {
+    const empty = document.createElement("div");
+    empty.className = "itemcard";
+    empty.innerHTML = `<div class="itemtitle">No items</div><div class="itemmeta">Nothing to render.</div>`;
+    renderedEl.appendChild(empty);
+    return;
+  }
+
+  for (const it of items) {
+    const title = it.name || `Unknown item (slot ${it.slot ?? "?"})`;
+    const meta = formatMeta(it);
+
+    const elements = Array.isArray(it.elements) ? it.elements : [];
+    const pills = elements.length
+      ? elements.map(e => `<span class="pill">${esc(e)}</span>`).join(" ")
+      : `<span class="pill">unknown</span>`;
+
+    const conf = Math.max(0, Math.min(1, Number(it.confidence ?? 0)));
+    const confPct = Math.round(conf * 100);
+
+    const dps = (it.dps == null) ? "—" : String(it.dps);
+    const dmg = (it.damage == null) ? "—" : esc(it.damage);
+
+    const notes = Array.isArray(it.notes) ? it.notes : [];
+    const notesHtml = notes.length
+      ? `<div class="note"><strong>Notes</strong><ul>${notes.map(n => `<li>${esc(n)}</li>`).join("")}</ul></div>`
+      : "";
+
+    const card = document.createElement("div");
+    card.className = "itemcard";
+    card.innerHTML = `
+      <div class="itemtitle">${esc(title)}</div>
+      <div class="itemmeta">${esc(meta)}</div>
+
+      <div class="row" style="gap:8px; margin-bottom:10px;">${pills}</div>
+
+      <div class="kv">
+        <div class="k">Kind</div><div class="v">${esc(it.item_kind || "unknown")}</div>
+        <div class="k">DPS</div><div class="v">${dps}</div>
+        <div class="k">Damage</div><div class="v">${dmg}</div>
+        <div class="k">Confidence</div>
+        <div class="v">
+          <div class="bar" title="${confPct}%">
+            <div style="width:${confPct}%"></div>
+          </div>
+          <div class="small mono" style="margin-top:6px;">${confPct}%</div>
+        </div>
+      </div>
+
+      ${notesHtml}
+    `;
+    renderedEl.appendChild(card);
+  }
+}
 
   function setStatus(v) {
     if (typeof v === 'string') statusEl.textContent = v;
@@ -235,6 +340,7 @@
       try { data = JSON.parse(text); } catch { data = { raw: text }; }
       if (!r.ok) setStatus({ error: 'request_failed', status: r.status, response: data });
       else setStatus(data);
+      try { renderItemsCardView(data); } catch {}
     } catch (e) {
       setStatus({ error: 'network_error', message: String(e) });
     } finally {
