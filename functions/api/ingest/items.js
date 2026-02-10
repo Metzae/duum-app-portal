@@ -4,6 +4,19 @@ const uncachedImages = imagesForVision
   .filter((img) => !cachedMap.has(img.sha256))
   .slice(0, 1); // guardrail: only analyze 1 new image per request
 
+function imagesForVision(images) {
+  const arr = Array.isArray(images) ? images : [];
+  return arr
+    .slice(0, 3)
+    .map((img) => String(img || ""))
+    .filter((s) => s.startsWith("data:image/"))
+    .map((dataUrl) => ({
+      type: "input_image",
+      image_url: dataUrl,
+      detail: "auto",
+    }));
+}
+
 function json(data, status = 200) {
   return new Response(JSON.stringify(data, null, 2), {
     status,
