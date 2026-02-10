@@ -1,8 +1,7 @@
 // functions/api/ingest/extract.js
 import { postToDuumProposal } from "./post_to_duum.js";
 
-function cors(origin) {
-  // Add any other frontends you use here
+function corsHeaders(origin) {
   const allow = new Set([
     "https://duum.io",
     "https://app.duum.io",
@@ -20,20 +19,18 @@ function cors(origin) {
 function json(obj, status = 200, origin = null) {
   return new Response(JSON.stringify(obj), {
     status,
-    headers: { "Content-Type": "application/json", ...cors(origin) },
+    headers: { "Content-Type": "application/json", ...corsHeaders(origin) },
   });
 }
 
-async function onRequest(context) {
+export async function onRequestOptions(context) {
+  const origin = context.request.headers.get("Origin");
+  return new Response(null, { headers: corsHeaders(origin) });
+}
+
+export async function onRequestPost(context) {
   const { request, env } = context;
   const origin = request.headers.get("Origin");
-
-  if (request.method === "OPTIONS") {
-    return new Response(null, { headers: cors(origin) });
-  }
-  if (request.method !== "POST") {
-    return json({ error: "Use POST" }, 405, origin);
-  }
 
   let body;
   try {
@@ -43,17 +40,14 @@ async function onRequest(context) {
   }
 
   const images = Array.isArray(body?.images) ? body.images.slice(0, 3) : [];
-  if (!images.length) {
-    return json({ error: "No images provided" }, 400, origin);
-  }
+  if (!images.length) return json({ error: "No images provided" }, 400, origin);
 
-  // Guardrails
+  // guardrails
   for (const img of images) {
     const s = String(img || "");
     if (!s.startsWith("data:image/")) {
       return json({ error: "Images must be data URLs (data:image/...)" }, 400, origin);
     }
-    // rough ~3MB-ish base64 limit
     if (s.length > 4_500_000) {
       return json({ error: "Image payload too large. Crop/compress and try again." }, 413, origin);
     }
@@ -75,10 +69,8 @@ Return ONLY valid JSON (no markdown, no commentary), with EXACTLY this shape:
 }
 
 Rules:
-- If unsure about a field, omit it and add a needs_review entry like "equipped.weapons[0].name".
-- Keep patch minimal (only what you’re confident changed or can be read).
-- Prefer nested structure like:
-  patch.equipped.weapons[], patch.equipped.shield, patch.equipped.class_mod, patch.skills, etc.
+- If unsure, omit the field and add a needs_review entry like "equipped.weapons[0].name".
+- Keep patch minimal (only what you’re confident about).
 `.trim();
 
   const input = [
@@ -96,7 +88,6 @@ Rules:
     },
   ];
 
-  // Call OpenAI Responses API
   const resp = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
@@ -112,36 +103,22 @@ Rules:
 
   const raw = await resp.text();
   if (!resp.ok) {
-    return json(
-      { error: `OpenAI error ${resp.status}`, detail: raw.slice(0, 2000) },
-      502,
-      origin
-    );
+    return json({ error: `OpenAI error ${resp.status}`, detail: raw.slice(0, 2000) }, 502, origin);
   }
 
   let data;
-  try {
-    data = JSON.parse(raw);
-  } catch {
-    return json({ error: "Bad OpenAI JSON", detail: raw.slice(0, 1200) }, 502, origin);
-  }
+  try { data = JSON.parse(raw); }
+  catch { return json({ error: "Bad OpenAI JSON", detail: raw.slice(0, 1200) }, 502, origin); }
 
   const text =
     data.output_text ||
     (data.output?.map(o => o?.content?.map(c => c?.text).join("")).join("\n") ?? "");
 
   let proposal;
-  try {
-    proposal = JSON.parse(text);
-  } catch {
-    return json(
-      { error: "Model did not return valid JSON proposal", detail: text.slice(0, 2000) },
-      502,
-      origin
-    );
-  }
+  try { proposal = JSON.parse(text); }
+  catch { return json({ error: "Model did not return valid JSON proposal", detail: text.slice(0, 2000) }, 502, origin); }
 
-  // Normalize required fields (just in case)
+  // normalize
   if (!proposal.kind) proposal.kind = "duum.ocr.proposal.v1";
   if (typeof proposal.confidence !== "number") proposal.confidence = 0.5;
   if (!proposal.patch || typeof proposal.patch !== "object") proposal.patch = {};
@@ -150,7 +127,7 @@ Rules:
     proposal.source = { service: "duum-app-portal", images: images.length };
   }
 
-  // Post proposal to Duum Core
+  // post to WP Duum Core
   try {
     const posted = await postToDuumProposal(proposal, env);
     return json({ ok: true, proposal, duum: posted }, 200, origin);
@@ -158,5 +135,3 @@ Rules:
     return json({ ok: false, error: String(e), proposal }, 502, origin);
   }
 }
-
-export default { onRequest };
